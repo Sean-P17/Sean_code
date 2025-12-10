@@ -1,13 +1,6 @@
 ---
 title: "Final Project-Data Wrangling"
 format: gfm
-<<<<<<< HEAD
-execute: 
-  warning: false
-  message: false
-  errors: false
-=======
->>>>>>> 6844b79 (Adding Changes)
 ---
 # Looking at American trends
 ### Import packages
