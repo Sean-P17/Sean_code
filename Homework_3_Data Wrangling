@@ -1,0 +1,397 @@
+---
+title: "Final Project-Data Wrangling"
+format: gfm
+execute: 
+  warning: false
+  message: false
+  errors: false
+---
+# Looking at American trends
+### Import packages
+```{python}
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import math as m
+import random
+```
+
+### Importing datasets
+```{python}
+#| echo: false
+death_how = pd.read_csv("/Users/seanpatnett/Downloads/NCHS_-_Leading_Causes_of_Death__United_States.csv")
+death_how.columns = [col.lower().replace(" ", "_") for col in death_how.columns]
+death_how.head()
+```
+
+Checking for potential data inconsistencies.
+```{python}
+#| echo: false
+death_how.duplicated().sum() #0
+death_how.isnull().sum() #0
+```
+
+Creating a Dataframe for death by year in each state.
+```{python}
+#| echo: false
+num_of_death = pd.DataFrame(death_how.groupby(['state', 'year'])['deaths'].agg(['sum'])).reset_index()
+```
+
+Going to look at how death in the 5 most populus midwestern states moved across time.
+```{python}
+#| results: 'hide'
+midwest_move = num_of_death.loc[(num_of_death['state'] == 'Illinois') | (num_of_death['state'] == 'Ohio') | (num_of_death['state'] == 'Michigan') | (num_of_death['state'] == 'Minnesota') | (num_of_death['state'] == 'Wisconsin'), :]
+
+
+
+```
+
+```{python}
+#| echo: false
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+plt.figure(figsize=[10,6])
+sns.scatterplot(data=midwest_move, x='year', y='sum', hue='state')
+plt.xticks(tick_locations)
+plt.ylabel('Death Total')
+plt.xlabel('Year')
+plt.title('How does the death count vary across the midwest')
+plt.show()
+```
+
+
+
+I noticed that death spiked in 2008, I know the 2008 housing crisis, was detrimental. I am going to look into what caused the spike then. If there is anything.
+
+```{python}
+#| results: 'hide'
+suicide_tracker = death_how.loc[death_how['cause_name'] == 'Suicide', ['year','state', 'cause_name', 'deaths']]
+```
+
+Now redo midwest_move variable to keep states consistent-
+
+Making a suicide tracker for the midwest (comparing this to the chart above)
+
+```{python}
+midwest_s_move = suicide_tracker.loc[(suicide_tracker['state'] == 'Illinois') | (suicide_tracker['state'] == 'Ohio') | (suicide_tracker['state'] == 'Michigan') | (suicide_tracker['state'] == 'Minnesota') | (suicide_tracker['state'] == 'Wisconsin'), :] #going to use in scatterplot
+
+#| echo: false
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+plt.figure(figsize=[10,6])
+sns.scatterplot(data=midwest_s_move, x='year', y='deaths', hue='state')
+plt.xticks(tick_locations)
+plt.ylabel('Suicide Tracker')
+plt.xlabel('Year')
+plt.title('Did suicide trend up during 2008?')
+plt.show()
+```
+
+#### Question 1: Do I see a noticeable jump in suicide related deaths between 2007-2010 which might coorelate with the 2008 financial crisis?
+
+```{python}
+suicide_tracker_usa = death_how.loc[(death_how['cause_name'] == 'Suicide') & (death_how['state'] == 'United States'), ['year','state', 'cause_name', 'deaths']] #suicide tracker for new visualization
+
+#| echo: false
+plt.figure(figsize=[10,14]) 
+sns.barplot(data=suicide_tracker_usa, y='year', x='deaths', orient='h')
+#horizontal barplot
+plt.xlabel('Suicide Tracker')
+plt.ylabel('Year')
+plt.title('Did suicide trend up during 2008?')
+plt.show()
+#doesnt really show much going to rethink approach
+```
+
+I need to find the sum of total deaths and the proportion of suicide deaths each year, then I can see if there is a jump
+
+```{python}
+#| results: 'hide'
+suicide_tracker = death_how.loc[death_how['cause_name'] == 'Suicide', ['year','state', 'cause_name', 'deaths']] #ensuring it's updated
+
+d1 = pd.DataFrame(death_how.groupby('year')['deaths'].sum()).reset_index()
+d2 = pd.DataFrame(suicide_tracker.groupby('year')['deaths'].sum()).reset_index().rename(columns={'deaths': 'suicide_related_death'})
+
+
+d4 = d1.merge(d2, on='year', how='inner') #merge two dfs to create proportion column
+d4['suicide_prop_%'] = (d4['suicide_related_death']/d4['deaths']) * 100
+```
+
+Now undergoing the visualizations
+
+```{python}
+#| echo: false
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+plt.figure(figsize=[10,6])
+sns.scatterplot(data=d4, x='year', y='suicide_prop_%')
+plt.xticks(tick_locations)
+plt.ylabel('Suicide Proportion Tracker(%)')
+plt.xlabel('Year')
+plt.title('Did suicide trend up between 2007-2010?')
+plt.show()
+#scatterplot first
+```
+
+```{python}
+#| echo: false
+plt.figure(figsize=[10,14])
+sns.barplot(data=d4, y='year', x='suicide_prop_%', orient='h')
+
+plt.xlabel('Suicide Tracker')
+plt.ylabel('Year')
+plt.title('Did suicide trend up during Financial Recession')
+plt.show()
+#barplot check
+```
+
+Noticed that the rise between 2007-2010 was fairly large in regards to suicide related deaths in proportion to total deaths.
+
+#### Question 2: What is the largest cause of death in America?
+```{python}
+#| results: 'hide'
+import statsmodels.formula.api as smf
+d5 = death_how.loc[death_how['cause_name'] != 'All causes', :]
+model1 = smf.ols(data=d5, formula='deaths~C(cause_name) + 0').fit()
+model1.summary()
+
+```
+
+Noticed that Heart Disease, Cancer, and Stroke were the largest factors in deaths in America.  But Heart Disease and Cancer were significantly higher than both crossing above 20,000.
+
+Now going to view a few visualizations, sampling random states to see if this trend continues across the US.
+
+
+
+First using a heatmap to visualize rate of deaths by cause in a select few states
+```{python}
+#| echo: false
+usa = death_how.loc[((death_how['state'] == 'Illinois') | (death_how['state'] == 'Ohio') | (death_how['state'] == 'Michigan') | (death_how['state'] == 'Minnesota') | (death_how['state'] == 'Wisconsin')) & (death_how['cause_name'] != 'All causes'), :]
+
+plt.figure(figsize=[9,9])
+sns.heatmap(pd.crosstab(usa['cause_name'], usa['state'], values=usa['deaths'], aggfunc='mean'), cbar=True, linewidths=0.8, annot=True, cmap='viridis')
+
+```
+
+looking at how death by cause moved throughout the 2010s.
+```{python}
+#| echo: false
+e = death_how.loc[(death_how['cause_name'] != 'All causes') & (death_how['year'] > 2010) & (death_how['state'] == 'United States'), ['year','state', 'cause_name', 'deaths']]
+plt.figure(figsize=[12,12])
+sns.heatmap(pd.crosstab(e['cause_name'], e['year'], values=e['deaths'], aggfunc='mean'), cbar=True, linewidths=0.8, annot=True, cmap='viridis')
+plt.xlabel("Years")
+plt.ylabel("Cause of Death")
+plt.title("How did causes of death trend")
+
+```
+
+Repeating a heatmap, but this time with random states to check for signifcant variance.
+```{python}
+#| echo: false
+death_how1 = death_how.loc[((death_how['state'] == 'New York') | (death_how['state'] == 'Alaska') | (death_how['state'] == 'Florida') | (death_how['state'] == 'Oregon') | (death_how['state'] == 'California')) & (death_how['cause_name'] != 'All causes') , :]
+
+
+sns.heatmap(pd.crosstab(death_how1['cause_name'], death_how1['state'], values=death_how1['deaths'], aggfunc='mean'), cbar=True, linewidths=1, annot=True, cmap='viridis')
+plt.xlabel("State Sampled")
+plt.ylabel("Cause of Death")
+plt.title("How did causes of death vary in select states")
+```
+
+
+
+#### Question 3: Is death per 100,000 people rising and how does cause of death vary by state ?
+
+Looking at death rate per 100,000 movement
+```{python}
+#| echo: false
+us = death_how.loc[(death_how['state'] == 'United States') & (death_how['cause_name'] == 'All causes'), :]
+
+
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=us, x='year', y='age-adjusted_death_rate')
+plt.xticks(tick_locations)
+plt.ylabel('Death Rate per 100,000')
+plt.xlabel('Year')
+plt.title('How has Death Rate shifted?')
+plt.show()
+```
+
+We see that death per 100,000 people is actually decreasing at a high rate.
+
+
+
+
+
+
+Doing a second dataset: Second part of project, going to use to compare America to the three other largest economies by GDP
+
+```{python}
+#| results: 'hide'
+#import data
+world_work = pd.read_csv("/Users/seanpatnett/Downloads/Data Wrangling_MSBA/Final Project Presentation/UnifiedDataset.csv")
+world_work.columns = [col.lower().replace(" ", "_") for col in world_work.columns]
+```
+
+Now let's get america alone, and key columns
+```{python}
+#| results: 'hide'
+america = world_work.loc[(world_work['country'] == 'United States')  & (world_work['gender'] == 'Both sexes') & (world_work['year'] > 1997), ['gender', 'year', 'birth_rate', 'death_rate', 'life_expectancy', 'homicide_rate',
+ 'gdp_per_capita', 'income_per_capita',   'basic_sanization_services_total' ]].reset_index().drop(columns='index', axis=1)
+
+```
+
+Analyzing homicide rate:
+```{python}
+#| echo: false
+#America solo, homicide rate
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=america, x='year', y='homicide_rate')
+plt.title('Homicide Rate through 21st century')
+plt.ylabel("Homicide Rate")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+```
+
+Birth Rate for America
+```{python}
+#| echo: false
+#America solo, birth rate
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=america, x='year', y='birth_rate')
+plt.title('Birth Rate through 21st century')
+plt.ylabel("Birth Rate")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+```
+
+How is income trending?
+```{python}
+#| echo: false
+#America solo, income per capita
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=america, x='year', y='income_per_capita')
+plt.title('Income per Capita through 21st century')
+plt.ylabel("Income per Capita")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+```
+
+```{python}
+#| echo: false
+#| results: 'hide'
+#Not relevant to project -----------------------------
+correlation = round(america['life_expectancy'].corr(america['homicide_rate']), 2)
+print(f'The coorelation between life expectancy and homeicide rate is strongly negatively coorelated at {correlation}.')
+#Not relevant to project -----------------------------
+```
+
+
+Now subsetting the 4 largest economies:
+
+```{python}
+#| results: 'hide'
+#subsetting 
+north_america = world_work.loc[((world_work['country'] == 'United States') | (world_work['country'] == 'China')| (world_work['country'] == 'Germany') | (world_work['country'] == 'Japan')) & (world_work['gender'] == 'Both sexes') & (world_work['year'] > 1997), ['year', 'country', 'birth_rate', 'death_rate', 'life_expectancy', 'homicide_rate',
+ 'gdp_per_capita', 'income_per_capita',  'total_population' ,'basic_sanization_services_total']].reset_index().drop(columns='index', axis=1)
+```
+
+Homicide Rate comparision by country over the years
+```{python}
+#| echo: false
+#comparing homicide rate
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=north_america, x='year', y='homicide_rate', hue='country')
+plt.title('Homicide Rate through 21st century: Comparing 4 largest economies')
+plt.ylabel("Homicide Rate")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+```
+
+Birth Rate Comparisions:
+```{python}
+#| echo: false
+#comparing birth rate
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=north_america, x='year', y='birth_rate', hue='country')
+plt.title('Birth Rate through 21st century: Comparing 4 largest economies')
+plt.ylabel("Birth Rate ")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+```
+
+Comparing GDP across nations
+```{python}
+#| echo: false
+#comparing GDP
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=north_america, x='year', y='gdp_per_capita', hue='country')
+plt.title('GDP per Capita through 21st century: Comparing 4 largest economies')
+plt.ylabel("GDP per Capita ")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+'gdp_per_capita'
+```
+
+How does Income vary:
+```{python}
+#| echo: false
+#comparing Income
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=north_america, x='year', y='income_per_capita', hue='country')
+plt.title('Income Per Capita through 21st century: Comparing 4 largest economies')
+plt.ylabel("Income Per Capita")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+```
+
+Comparing Life Expectancy:
+```{python}
+#| echo: false
+#comparing Life Expectancy
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+sns.scatterplot(data=north_america, x='year', y='life_expectancy', hue='country')
+plt.title('Life Expectancy through 21st century: Comparing 4 largest economies')
+plt.ylabel("Life Expectancy")
+plt.xlabel("Year")
+plt.xticks(tick_locations)
+```
+
+Comparing total population
+```{python}
+#| echo: false
+#comparing total population average
+sns.barplot(data=north_america, y='country', x='total_population', hue='country')
+plt.title('Total Population through 21st century: Comparing 4 largest economies')
+plt.xlabel("Total Population(Measured in Billions)")
+plt.xlim(60000000, 1400000000)
+plt.ylabel("Country")
+
+```
+
+
+Going to compare aging of population for last bench mark. Need to add to my original subset frames.
+
+```{python}
+#| echo: false
+#| results: 'hide'
+america12 = world_work.loc[(world_work['country'] == 'United States')  & (world_work['gender'] == 'Both sexes') & (world_work['year'] > 1997), ['gender', 'year', 'birth_rate', 'death_rate', 'life_expectancy', 'homicide_rate',
+ 'gdp_per_capita', 'income_per_capita',
+ '%_population_aged_0-14',
+ '%_population_aged_15-64',
+ '%_population_aged_65+',
+]].reset_index().drop(columns='index', axis=1)
+```
+
+Now need to melt data(make it longer so I do scatterplots)
+```{python}
+#| results: 'hide'
+america12_melt = america12.melt(id_vars=['gender', 'year', 'birth_rate', 'death_rate', 'life_expectancy', 'homicide_rate','gdp_per_capita', 'income_per_capita'], var_name='population', value_name='population_by_age')
+```
+
+```{python}
+#| echo: false
+sns.scatterplot(data=america12_melt, x='year', y='population_by_age', hue='population')
+plt.title("How is American age groups moving over time?")
+tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
+plt.xticks(tick_locations)
+plt.xlabel('Year')
+plt.ylabel('Population by Age')
+```
