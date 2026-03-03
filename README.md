@@ -1,452 +1,495 @@
-# Sean's Code Repository
-This repository contains code for data wrangling and analysis.
-
-# Final Project-Data Wrangling
+# Ailment Detector
 
 
-# Looking at American trends
-
-### Import packages
+Step 1: Web scrape info from mayoclinic.com
 
 ``` python
+#Project for Unstructured Data Analytics
+
+    #First we are going to webscrape Mayoclinic 
 import pandas as pd
-import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
-import math as m
-import random
+import seaborn as sns
+from playwright.sync_api import sync_playwright, Playwright
+import re
+import time
+from bs4 import BeautifulSoup
+
+
+#open the website
+pw = sync_playwright().start()
+chrome = pw.chromium.launch(headless=False)
+page = chrome.new_page()
+url = 'https://www.mayoclinic.org/diseases-conditions'
+page.goto(url)
+
+#first step: we want to select the letters A-Z via their links.
+xpath1 = '//li[@class="cmp-alphabet-facet--letter"]/div/a'
+disease_letter = page.locator(xpath1)
+links = []
+for i in range(disease_letter.count()):
+    link = disease_letter.nth(i).get_attribute("href")
+    link = "https://www.mayoclinic.org/" + link
+    links.append(link)
+#second step loop through A-Z links and gather list of illnesses from each:
+list_of_diseases = []
+names = []
+for i, link in enumerate(links):
+    page.goto(link, wait_until="load")
+    xpath2 = '//div[@class="cmp-result-name "]/div/a'
+    disease_name = page.locator(xpath2)
+    xpath2_1 = '//div[@class="cmp-results-with-primary-name "]/span/div[@class="cmp-link"]/a'
+    disease_name_sub = page.locator(xpath2_1)
+    d_count = disease_name_sub.count()
+    d2_count = disease_name.count()
+    try:
+        for j in range(d2_count):
+            sick_link = disease_name.nth(j).get_attribute("href")
+            name = disease_name.nth(j).inner_text()
+            print(sick_link)
+            names.append(name)
+            list_of_diseases.append(sick_link)
+        for k in range(d_count):
+            sick_link_1 = disease_name_sub.nth(k).get_attribute("href")
+            name1 = disease_name_sub.nth(j).inner_text()
+            print(sick_link_1)
+            names.append(name1)
+            list_of_diseases.append(sick_link_1)
+        dict_for_df = ({
+            'name': names,
+            'links': list_of_diseases
+        })
+    except:
+        pass
+    time.sleep(2)
+print(len(names))
+print(len(list_of_diseases))
+#---------------DATAFRAME----------------------
+links_df = pd.DataFrame(list_of_diseases)
+links_df = links_df.drop_duplicates()
+links_df['link_name'] = links_df[0]
+links_df = links_df.drop(columns=0)
+links_df = links_df.reset_index()
+links_df = links_df.drop(columns='index')
+
+names_df = pd.DataFrame(names)
+names_df = names_df.drop_duplicates()
+names_df['name'] = names_df[0]
+names_df = names_df.drop(columns=0)
+names_df = names_df.reset_index()
+names_df = names_df.drop(columns='index')
+
+combined_df = pd.concat([names_df, links_df], axis=1).reset_index()
+combined_df = combined_df.drop(columns='index')
+
+link_df_list = combined_df['link_name'].tolist()
+print(len(link_df_list))
+#---------------DATAFRAME----------------------
+
+
+#NOW NEED TO LOOP THROUGH LINK_DF_LIST to get symptoms, causes, and risk factors.
+#Going to extract Symptoms, Causes, Risk Factors
+sickness_data = []
+for s, sicklink in enumerate(link_df_list):
+    page.goto(sicklink, wait_until="load")
+    time.sleep(3)
+    try:    
+        #overview
+        overview_xpath = '//h2[contains(text(), "Overview")]/following-sibling::p[preceding-sibling::h2[1][contains(text(),"Overview")]]'
+        overview_full_text = "" 
+        overview_paragraph = page.locator(overview_xpath)
+        overview_full_text = overview_paragraph.all_inner_texts()
+        print(overview_full_text)
+        #symptoms
+        symptom_xpath = '//h2[contains(text(), "Symptom")]/following-sibling::ul[1]'
+        symptom = page.locator(symptom_xpath)
+        symptoms_list = symptom.all_inner_texts() #now works
+        print(symptoms_list)
+
+        #risks
+        risks_xpath = '//h2[contains(text(), "Risk")]/following-sibling::ul[1]'
+        risks = page.locator(risks_xpath)
+        risks_list = risks.all_inner_texts()
+        print(risks_list)
+
+            #causes
+        causes_xpath = '//h2[contains(text(), "Cause")]/following-sibling::ul[1]'
+        cause = page.locator(causes_xpath)
+        causes_list = cause.all_inner_texts()
+        print(causes_list)
+            #now storing row to make dataframe outside loop
+        sickness_data.append({
+            'overview': overview_full_text,
+            'symptoms': symptoms_list,
+            'risks': risks_list,
+            'cause': causes_list
+            })
+        time.sleep(1)
+    except:
+        pass        
+# now close.
+page.close()
+chrome.close()
+pw.stop()
+
+#convert to a dataframe:
+mayo_clinic_df = pd.DataFrame(sickness_data)
+mayo_df = pd.concat([combined_df, mayo_clinic_df], axis=1)
+mayo_df.to_csv("part1_p2.csv", index=False)
+
+mayo_df.to_csv("/Users/seanpatnett/Downloads/part1_p2.csv", index=False)
 ```
 
-### Importing datasets
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-&#10;    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-&#10;    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-
-|  | year | 113_cause_name | cause_name | state | deaths | age-adjusted_death_rate |
-|----|----|----|----|----|----|----|
-| 0 | 2017 | Accidents (unintentional injuries) (V01-X59,Y8... | Unintentional injuries | United States | 169936 | 49.4 |
-| 1 | 2017 | Accidents (unintentional injuries) (V01-X59,Y8... | Unintentional injuries | Alabama | 2703 | 53.8 |
-| 2 | 2017 | Accidents (unintentional injuries) (V01-X59,Y8... | Unintentional injuries | Alaska | 436 | 63.7 |
-| 3 | 2017 | Accidents (unintentional injuries) (V01-X59,Y8... | Unintentional injuries | Arizona | 4184 | 56.2 |
-| 4 | 2017 | Accidents (unintentional injuries) (V01-X59,Y8... | Unintentional injuries | Arkansas | 1625 | 51.8 |
-
-</div>
-
-Checking for potential data inconsistencies.
-
-    year                       0
-    113_cause_name             0
-    cause_name                 0
-    state                      0
-    deaths                     0
-    age-adjusted_death_rate    0
-    dtype: int64
-
-Creating a Dataframe for death by year in each state.
-
-Going to look at how death in the 5 most populus midwestern states moved
-across time.
+Step 1.5: Download the data from prior file.
 
 ``` python
-midwest_move = num_of_death.loc[(num_of_death['state'] == 'Illinois') | (num_of_death['state'] == 'Ohio') | (num_of_death['state'] == 'Michigan') | (num_of_death['state'] == 'Minnesota') | (num_of_death['state'] == 'Wisconsin'), :]
+import string
+import re
+import spacy
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import time
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+mayo_examine = pd.read_csv("/Users/seanpatnett/Downloads/part1_p2.csv")
+#now clean up and get rid of all missing data: 
+mayo_examine1 = mayo_examine[mayo_examine['symptoms'] != '[]']
+mayo_examine2 = mayo_examine1[mayo_examine['cause'] != '[]']
+mayo_examine3 = mayo_examine2[mayo_examine['risks'] != '[]']
+ailment_df = mayo_examine3
 ```
 
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-7-output-1.png)
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/1082221265.py:15: UserWarning:
 
-I noticed that death spiked in 2008, I know the 2008 housing crisis, was
-detrimental. I am going to look into what caused the spike then. If
-there is anything.
+    Boolean Series key will be reindexed to match DataFrame index.
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/1082221265.py:16: UserWarning:
+
+    Boolean Series key will be reindexed to match DataFrame index.
+
+Now going into step 2: clean the text
 
 ``` python
-suicide_tracker = death_how.loc[death_how['cause_name'] == 'Suicide', ['year','state', 'cause_name', 'deaths']]
+#First going to do text cleaning:
+
+#First need to get rid of \n
+ailment_df['overview'] = ailment_df['overview'].str.replace(r'\\n|\n', ' ', regex=True)
+ailment_df['symptoms'] = ailment_df['symptoms'].str.replace(r'\\n|\n', ' ', regex=True)
+ailment_df['risks'] = ailment_df['risks'].str.replace(r'\\n|\n', ' ', regex=True)
+ailment_df['cause'] = ailment_df['cause'].str.replace(r'\\n|\n', ' ', regex=True)
+
+#Now we need to get rid of the [ and ]
+ailment_df['overview'] = ailment_df['overview'].str.replace(r'\[|\]', '', regex=True)
+ailment_df['symptoms'] = ailment_df['symptoms'].str.replace(r'\[|\]', '', regex=True)
+ailment_df['risks'] = ailment_df['risks'].str.replace(r'\[|\]', '', regex=True)
+ailment_df['cause'] = ailment_df['cause'].str.replace(r'\[|\]', '', regex=True)
+
+#Now need to get rid of / \
+ailment_df['overview'] = ailment_df['overview'].str.replace(r'\\|\/', '', regex=True)
+ailment_df['symptoms'] = ailment_df['symptoms'].str.replace(r'\\|\/', '', regex=True)
+ailment_df['risks'] = ailment_df['risks'].str.replace(r'\\|\/', '', regex=True)
+ailment_df['cause'] = ailment_df['cause'].str.replace(r'\\|\/', '', regex=True)
 ```
 
-Now redo midwest_move variable to keep states consistent-
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:4: SettingWithCopyWarning:
 
-Making a suicide tracker for the midwest (comparing this to the chart
-above)
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:5: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:6: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:7: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:10: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:11: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:12: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:13: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:16: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:17: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:18: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2107344601.py:19: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
 
 ``` python
-midwest_s_move = suicide_tracker.loc[(suicide_tracker['state'] == 'Illinois') | (suicide_tracker['state'] == 'Ohio') | (suicide_tracker['state'] == 'Michigan') | (suicide_tracker['state'] == 'Minnesota') | (suicide_tracker['state'] == 'Wisconsin'), :] #going to use in scatterplot
+import spacy
+from spacy.lang.en.stop_words import STOP_WORDS
 
-#| echo: false
-tick_locations = [1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018]
-plt.figure(figsize=[10,6])
-sns.scatterplot(data=midwest_s_move, x='year', y='deaths', hue='state')
-plt.xticks(tick_locations)
-plt.ylabel('Suicide Tracker')
-plt.xlabel('Year')
-plt.title('Did suicide trend up during 2008?')
-plt.show()
+nlp = spacy.load("en_core_web_sm")
+stopwords = STOP_WORDS
+
+
+def preprocess(text):
+    doc = nlp(text, disable=['ner', 'parser'])
+    lemmas = [token.lemma_ for token in doc]
+    a_lemmas = [lemma for lemma in lemmas
+             if lemma.isalpha() and lemma not in stopwords]
+    return ' '.join(a_lemmas)
+
+ailment_df['symptoms'] = ailment_df['symptoms'].apply(preprocess)
+ailment_df['overview'] = ailment_df['overview'].apply(preprocess)
+ailment_df['risks'] = ailment_df['risks'].apply(preprocess)
+ailment_df['cause'] = ailment_df['cause'].apply(preprocess)
 ```
 
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-9-output-1.png)
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/1603662476.py:15: SettingWithCopyWarning:
 
-#### Question 1: Do I see a noticeable jump in suicide related deaths between 2007-2010 which might coorelate with the 2008 financial crisis?
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/1603662476.py:16: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/1603662476.py:17: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    /var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/1603662476.py:18: SettingWithCopyWarning:
+
+
+    A value is trying to be set on a copy of a slice from a DataFrame.
+    Try using .loc[row_indexer,col_indexer] = value instead
+
+    See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+Moving to step 3 Creating the suggestion machine: So first I am going to
+get the most common symptoms:
 
 ``` python
-suicide_tracker_usa = death_how.loc[(death_how['cause_name'] == 'Suicide') & (death_how['state'] == 'United States'), ['year','state', 'cause_name', 'deaths']] #suicide tracker for new visualization
+ngrams = CountVectorizer(ngram_range=(1,3))
+ngram_symptoms = ngrams.fit_transform(ailment_df['symptoms'])
 
-#| echo: false
-plt.figure(figsize=[10,14]) 
-sns.barplot(data=suicide_tracker_usa, y='year', x='deaths', orient='h')
-#horizontal barplot
-plt.xlabel('Suicide Tracker')
-plt.ylabel('Year')
-plt.title('Did suicide trend up during 2008?')
-plt.show()
-#doesnt really show much going to rethink approach
+#now need to extract symptoms from ngrams
+extract = ngram_symptoms.toarray()
+ngram_count = extract.sum(axis=0)
+ngram_symp_words = ngrams.get_feature_names_out()
+word_df = pd.DataFrame({
+    'symptom': ngram_symp_words,
+    'count': ngram_count
+})
 ```
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-10-output-1.png)
-
-I need to find the sum of total deaths and the proportion of suicide
-deaths each year, then I can see if there is a jump
 
 ``` python
-suicide_tracker = death_how.loc[death_how['cause_name'] == 'Suicide', ['year','state', 'cause_name', 'deaths']] #ensuring it's updated
-
-d1 = pd.DataFrame(death_how.groupby('year')['deaths'].sum()).reset_index()
-d2 = pd.DataFrame(suicide_tracker.groupby('year')['deaths'].sum()).reset_index().rename(columns={'deaths': 'suicide_related_death'})
-
-
-d4 = d1.merge(d2, on='year', how='inner') #merge two dfs to create proportion column
-d4['suicide_prop_%'] = (d4['suicide_related_death']/d4['deaths']) * 100
+#now order this dataframe to get most valuable symptoms:
+order_100 = word_df.sort_values(by='count', ascending=False).head(150).reset_index()
+order_150 = order_100.drop(columns='index')
 ```
 
-Now undergoing the visualizations
+To ensure I am getting a read on the symptom considering it is one word
+and I need high probability scores, I am going to combine all the
+columns(except link) in my orignal dataframe
 
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-12-output-1.png)
+::: {.cell execution_count=7}
+`{.python .cell-code}  ailment1_df = ailment_df  ailment1_df['all_info'] = ailment_df['overview'] + ailment_df['symptoms'] + ailment_df['risks'] + ailment_df['cause']  ailment1_df = ailment1_df.drop(columns=['link_name', 'cause', 'risks', 'overview', 'symptoms'])  ailment1_df = ailment1_df.reset_index().drop(columns='index')`
 
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-13-output-1.png)
+::: {.cell-output .cell-output-stderr} \`\`\`
+/var/folders/nn/mjf4tyzx18sdm2bmnmpjzcsm0000gn/T/ipykernel_7567/2932518154.py:2:
+SettingWithCopyWarning:
 
-Noticed that the rise between 2007-2010 was fairly large in regards to
-suicide related deaths in proportion to total deaths.
+A value is trying to be set on a copy of a slice from a DataFrame. Try
+using .loc\[row_indexer,col_indexer\] = value instead
 
-#### Question 2: What is the largest cause of death in America?
+See the caveats in the documentation:
+https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+
+    :::
+    :::
+
+
+    Now I need to use tf-idf to quantify probabilty relationships(something to that effect at least). 
+
+    ::: {.cell execution_count=8}
+    ``` {.python .cell-code}
+    vectorizer = TfidfVectorizer()
+    all_info_vector = vectorizer.fit_transform(ailment1_df['all_info'])
+    user_list = order_150['symptom'].tolist()
+
+:::
+
+Now I need to get the user’s input and conduct cosine similarity to
+determine what ailment it most aligns with.
 
 ``` python
-import statsmodels.formula.api as smf
-d5 = death_how.loc[death_how['cause_name'] != 'All causes', :]
-model1 = smf.ols(data=d5, formula='deaths~C(cause_name) + 0').fit()
-model1.summary()
+#using this as my blueprint code. for while loop
+user_list = order_150['symptom'].tolist()
+
+print('Are you experiencing any of these symptoms: ')
+print(user_list[0:10])
+done = input('Please type: "y" or "n"')
+person_issues = []
+if done == "y":
+    print("Which one: ")
+    next = input("Type it exactly as seen on the page and one at a time: ")
+    if next in user_list[0:10]:
+        person_issues.append(next)
+    else:
+        print("You did not enter a valid symptom. Goodbye")
+else:
+    print(user_list[10:20])
+    done
 ```
-
-|                   |                  |                     |             |
-|-------------------|------------------|---------------------|-------------|
-| Dep. Variable:    | deaths           | R-squared:          | 0.042       |
-| Model:            | OLS              | Adj. R-squared:     | 0.041       |
-| Method:           | Least Squares    | F-statistic:        | 48.03       |
-| Date:             | Wed, 10 Dec 2025 | Prob (F-statistic): | 1.48e-85    |
-| Time:             | 09:23:04         | Log-Likelihood:     | -1.1844e+05 |
-| No. Observations: | 9880             | AIC:                | 2.369e+05   |
-| Df Residuals:     | 9870             | BIC:                | 2.370e+05   |
-| Df Model:         | 9                |                     |             |
-| Covariance Type:  | nonrobust        |                     |             |
-
-OLS Regression Results
-
-|  |  |  |  |  |  |  |
-|----|----|----|----|----|----|----|
-|  | coef | std err | t | P\>\|t\| | \[0.025 | 0.975\] |
-| C(cause_name)\[Alzheimer's disease\] | 3025.9433 | 1237.812 | 2.445 | 0.015 | 599.578 | 5452.308 |
-| C(cause_name)\[CLRD\] | 5252.8887 | 1237.812 | 4.244 | 0.000 | 2826.524 | 7679.254 |
-| C(cause_name)\[Cancer\] | 2.195e+04 | 1237.812 | 17.733 | 0.000 | 1.95e+04 | 2.44e+04 |
-| C(cause_name)\[Diabetes\] | 2833.8927 | 1237.812 | 2.289 | 0.022 | 407.528 | 5260.258 |
-| C(cause_name)\[Heart disease\] | 2.474e+04 | 1237.812 | 19.989 | 0.000 | 2.23e+04 | 2.72e+04 |
-| C(cause_name)\[Influenza and pneumonia\] | 2215.8725 | 1237.812 | 1.790 | 0.073 | -210.492 | 4642.237 |
-| C(cause_name)\[Kidney disease\] | 1738.0830 | 1237.812 | 1.404 | 0.160 | -688.282 | 4164.448 |
-| C(cause_name)\[Stroke\] | 5519.2773 | 1237.812 | 4.459 | 0.000 | 3092.912 | 7945.642 |
-| C(cause_name)\[Suicide\] | 1410.9636 | 1237.812 | 1.140 | 0.254 | -1015.401 | 3837.328 |
-| C(cause_name)\[Unintentional injuries\] | 4752.6721 | 1237.812 | 3.840 | 0.000 | 2326.307 | 7179.037 |
-
-|                |           |                   |              |
-|----------------|-----------|-------------------|--------------|
-| Omnibus:       | 17874.550 | Durbin-Watson:    | 1.985        |
-| Prob(Omnibus): | 0.000     | Jarque-Bera (JB): | 16912393.273 |
-| Skew:          | 13.510    | Prob(JB):         | 0.00         |
-| Kurtosis:      | 203.880   | Cond. No.         | 1.00         |
-
-<br/><br/>Notes:<br/>[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
-
-Noticed that Heart Disease, Cancer, and Stroke were the largest factors
-in deaths in America. But Heart Disease and Cancer were significantly
-higher than both crossing above 20,000.
-
-Now going to view a few visualizations, sampling random states to see if
-this trend continues across the US.
-
-First using a heatmap to visualize rate of deaths by cause in a select
-few states
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-15-output-1.png)
-
-looking at how death by cause moved throughout the 2010s.
-
-    Text(0.5, 1.0, 'How did causes of death trend')
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-16-output-2.png)
-
-Repeating a heatmap, but this time with random states to check for
-signifcant variance.
-
-    Text(0.5, 1.0, 'How did causes of death vary in select states')
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-17-output-2.png)
-
-#### Question 3: Is death per 100,000 people rising and how does cause of death vary by state ?
-
-Looking at death rate per 100,000 movement
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-18-output-1.png)
-
-We see that death per 100,000 people is actually decreasing at a high
-rate.
-
-Doing a second dataset: Second part of project, going to use to compare
-America to the three other largest economies by GDP
 
 ``` python
-#import data
-world_work = pd.read_csv("/Users/seanpatnett/Downloads/Data Wrangling_MSBA/Final Project Presentation/UnifiedDataset.csv")
-world_work.columns = [col.lower().replace(" ", "_") for col in world_work.columns]
+list_length = 10
+i = 0
+person_issues = []
+print('''Hi I understand you have a current ailment: 
+            I am going to go through a list of 150 potential symptoms 10 at a time.
+  
+            If you see one from the list that matches your symptoms type "y" if none do type "n" to go to the next batch.
+            If multiple from said list ''')
+time.sleep(2)
+
+while i < len(user_list) and len(person_issues) < 5:
+    current_display = user_list[i:i + list_length]
+    print('\nAre you experiencing any of these symptoms: ')
+    time.sleep(0.5)
+    print(current_display)
+    done = input('Please type: "y" or "n"').lower()
+
+    if done == "n":
+        i += list_length  
+    elif done == 'y':
+        print("Which one: ")
+        next = input("Type it exactly as seen on the page and one at a time: ").lower()
+        if next in current_display:
+            if next not in person_issues:
+                person_issues.append(next)
+                print(f"Added! You currently have {len(person_issues)}/5 symptoms.")
+            else: 
+                print('Sorry, you already added that.')
+        else:
+            print("That symptom isn't listed.")
+    else:
+        print('That is an invalid input. Type "y" or "n".')
+time.sleep(1.5)
+print('\nThank you, we have gathered all the symptoms needed for analysis.')
 ```
 
-Now let’s get america alone, and key columns
+Now that I have all the users symptoms(5). I am going to run that
+through a tfidf vectorizer(the same one).
 
 ``` python
-america = world_work.loc[(world_work['country'] == 'United States')  & (world_work['gender'] == 'Both sexes') & (world_work['year'] > 1997), ['gender', 'year', 'birth_rate', 'death_rate', 'life_expectancy', 'homicide_rate',
- 'gdp_per_capita', 'income_per_capita',   'basic_sanization_services_total' ]].reset_index().drop(columns='index', axis=1)
+person_issues = ['fever', 'sleep', 'urine', 'chest', 'swell']
+symptoms = [" ".join(person_issues)]
+issues_vectorized = vectorizer.transform(symptoms)
 ```
 
-Analyzing homicide rate:
-
-    ([<matplotlib.axis.XTick at 0x123ccd190>,
-      <matplotlib.axis.XTick at 0x123d00650>,
-      <matplotlib.axis.XTick at 0x123d023d0>,
-      <matplotlib.axis.XTick at 0x123d08a50>,
-      <matplotlib.axis.XTick at 0x123d0af90>,
-      <matplotlib.axis.XTick at 0x123c817d0>,
-      <matplotlib.axis.XTick at 0x123d125d0>,
-      <matplotlib.axis.XTick at 0x123d18b50>,
-      <matplotlib.axis.XTick at 0x123d1aed0>,
-      <matplotlib.axis.XTick at 0x123d1d3d0>,
-      <matplotlib.axis.XTick at 0x123d11b50>],
-     [Text(1998, 0, '1998'),
-      Text(2000, 0, '2000'),
-      Text(2002, 0, '2002'),
-      Text(2004, 0, '2004'),
-      Text(2006, 0, '2006'),
-      Text(2008, 0, '2008'),
-      Text(2010, 0, '2010'),
-      Text(2012, 0, '2012'),
-      Text(2014, 0, '2014'),
-      Text(2016, 0, '2016'),
-      Text(2018, 0, '2018')])
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-21-output-2.png)
-
-Birth Rate for America
-
-    ([<matplotlib.axis.XTick at 0x123c0f950>,
-      <matplotlib.axis.XTick at 0x1215cde90>,
-      <matplotlib.axis.XTick at 0x1215cf850>,
-      <matplotlib.axis.XTick at 0x1215b7b90>,
-      <matplotlib.axis.XTick at 0x12159e590>,
-      <matplotlib.axis.XTick at 0x12159f450>,
-      <matplotlib.axis.XTick at 0x1215e27d0>,
-      <matplotlib.axis.XTick at 0x1215e1010>,
-      <matplotlib.axis.XTick at 0x1215b2e90>,
-      <matplotlib.axis.XTick at 0x1215d70d0>,
-      <matplotlib.axis.XTick at 0x1215d6290>],
-     [Text(1998, 0, '1998'),
-      Text(2000, 0, '2000'),
-      Text(2002, 0, '2002'),
-      Text(2004, 0, '2004'),
-      Text(2006, 0, '2006'),
-      Text(2008, 0, '2008'),
-      Text(2010, 0, '2010'),
-      Text(2012, 0, '2012'),
-      Text(2014, 0, '2014'),
-      Text(2016, 0, '2016'),
-      Text(2018, 0, '2018')])
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-22-output-2.png)
-
-How is income trending?
-
-    ([<matplotlib.axis.XTick at 0x121591810>,
-      <matplotlib.axis.XTick at 0x1214e1910>,
-      <matplotlib.axis.XTick at 0x12125f050>,
-      <matplotlib.axis.XTick at 0x12125fa50>,
-      <matplotlib.axis.XTick at 0x12125d490>,
-      <matplotlib.axis.XTick at 0x121247a90>,
-      <matplotlib.axis.XTick at 0x121247690>,
-      <matplotlib.axis.XTick at 0x121251390>,
-      <matplotlib.axis.XTick at 0x12149c0d0>,
-      <matplotlib.axis.XTick at 0x12152b9d0>,
-      <matplotlib.axis.XTick at 0x121498a10>],
-     [Text(1998, 0, '1998'),
-      Text(2000, 0, '2000'),
-      Text(2002, 0, '2002'),
-      Text(2004, 0, '2004'),
-      Text(2006, 0, '2006'),
-      Text(2008, 0, '2008'),
-      Text(2010, 0, '2010'),
-      Text(2012, 0, '2012'),
-      Text(2014, 0, '2014'),
-      Text(2016, 0, '2016'),
-      Text(2018, 0, '2018')])
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-23-output-2.png)
-
-    The coorelation between life expectancy and homeicide rate is strongly negatively coorelated at -0.92.
-
-Now subsetting the 4 largest economies:
+Now the final step is getting the similarity(going to use cosine).
 
 ``` python
-#subsetting 
-north_america = world_work.loc[((world_work['country'] == 'United States') | (world_work['country'] == 'China')| (world_work['country'] == 'Germany') | (world_work['country'] == 'Japan')) & (world_work['gender'] == 'Both sexes') & (world_work['year'] > 1997), ['year', 'country', 'birth_rate', 'death_rate', 'life_expectancy', 'homicide_rate',
- 'gdp_per_capita', 'income_per_capita',  'total_population' ,'basic_sanization_services_total']].reset_index().drop(columns='index', axis=1)
+cosine_similarity_ans = cosine_similarity(issues_vectorized, all_info_vector)
+flat_scores = cosine_similarity_ans.flatten()
+sorted_indices = np.argsort(flat_scores)
+top_5_indices = sorted_indices[-5:][::-1]
+
+print(f"\nBased on your symptoms: {person_issues}.\nThese are your possible ailments:\n")
+
+for i in top_5_indices:
+    likely_illness_name = ailment1_df['name'].iloc[i] 
+    score = flat_scores[i]
+    #now getting score in percent
+    probability = round(score * 100, 2)
+    print(f"{likely_illness_name}: {probability}% ")
 ```
 
-Homicide Rate comparision by country over the years
 
-    ([<matplotlib.axis.XTick at 0x121276310>,
-      <matplotlib.axis.XTick at 0x12126d110>,
-      <matplotlib.axis.XTick at 0x1214a7390>,
-      <matplotlib.axis.XTick at 0x12126bc50>,
-      <matplotlib.axis.XTick at 0x1211ddfd0>,
-      <matplotlib.axis.XTick at 0x1211dce10>,
-      <matplotlib.axis.XTick at 0x1211c0310>,
-      <matplotlib.axis.XTick at 0x1211c2750>,
-      <matplotlib.axis.XTick at 0x121254810>,
-      <matplotlib.axis.XTick at 0x1211e8950>,
-      <matplotlib.axis.XTick at 0x1211ddc50>],
-     [Text(1998, 0, '1998'),
-      Text(2000, 0, '2000'),
-      Text(2002, 0, '2002'),
-      Text(2004, 0, '2004'),
-      Text(2006, 0, '2006'),
-      Text(2008, 0, '2008'),
-      Text(2010, 0, '2010'),
-      Text(2012, 0, '2012'),
-      Text(2014, 0, '2014'),
-      Text(2016, 0, '2016'),
-      Text(2018, 0, '2018')])
+    Based on your symptoms: ['fever', 'sleep', 'urine', 'chest', 'swell'].
+    These are your possible ailments:
 
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-26-output-2.png)
-
-Birth Rate Comparisions:
-
-    ([<matplotlib.axis.XTick at 0x123d99510>,
-      <matplotlib.axis.XTick at 0x123dabc10>,
-      <matplotlib.axis.XTick at 0x123db9910>,
-      <matplotlib.axis.XTick at 0x123dbbd90>,
-      <matplotlib.axis.XTick at 0x123dc2390>,
-      <matplotlib.axis.XTick at 0x123dcc990>,
-      <matplotlib.axis.XTick at 0x123dced10>,
-      <matplotlib.axis.XTick at 0x123dce3d0>,
-      <matplotlib.axis.XTick at 0x123dd5fd0>,
-      <matplotlib.axis.XTick at 0x123dd8310>,
-      <matplotlib.axis.XTick at 0x123dda890>],
-     [Text(1998, 0, '1998'),
-      Text(2000, 0, '2000'),
-      Text(2002, 0, '2002'),
-      Text(2004, 0, '2004'),
-      Text(2006, 0, '2006'),
-      Text(2008, 0, '2008'),
-      Text(2010, 0, '2010'),
-      Text(2012, 0, '2012'),
-      Text(2014, 0, '2014'),
-      Text(2016, 0, '2016'),
-      Text(2018, 0, '2018')])
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-27-output-2.png)
-
-Comparing GDP across nations
-
-    'gdp_per_capita'
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-28-output-2.png)
-
-How does Income vary:
-
-    ([<matplotlib.axis.XTick at 0x123ec9450>,
-      <matplotlib.axis.XTick at 0x123eedc90>,
-      <matplotlib.axis.XTick at 0x123eefe10>,
-      <matplotlib.axis.XTick at 0x123ef65d0>,
-      <matplotlib.axis.XTick at 0x123eee290>,
-      <matplotlib.axis.XTick at 0x123efa210>,
-      <matplotlib.axis.XTick at 0x123efc590>,
-      <matplotlib.axis.XTick at 0x123efeb90>,
-      <matplotlib.axis.XTick at 0x123f00f90>,
-      <matplotlib.axis.XTick at 0x123ef97d0>,
-      <matplotlib.axis.XTick at 0x123f04190>],
-     [Text(1998, 0, '1998'),
-      Text(2000, 0, '2000'),
-      Text(2002, 0, '2002'),
-      Text(2004, 0, '2004'),
-      Text(2006, 0, '2006'),
-      Text(2008, 0, '2008'),
-      Text(2010, 0, '2010'),
-      Text(2012, 0, '2012'),
-      Text(2014, 0, '2014'),
-      Text(2016, 0, '2016'),
-      Text(2018, 0, '2018')])
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-29-output-2.png)
-
-Comparing Life Expectancy:
-
-    ([<matplotlib.axis.XTick at 0x123e31fd0>,
-      <matplotlib.axis.XTick at 0x123f6ce10>,
-      <matplotlib.axis.XTick at 0x123e97990>,
-      <matplotlib.axis.XTick at 0x123f81290>,
-      <matplotlib.axis.XTick at 0x123f83790>,
-      <matplotlib.axis.XTick at 0x123f8dd10>,
-      <matplotlib.axis.XTick at 0x123f90050>,
-      <matplotlib.axis.XTick at 0x123f3d710>,
-      <matplotlib.axis.XTick at 0x123fbe5d0>,
-      <matplotlib.axis.XTick at 0x123fc4090>,
-      <matplotlib.axis.XTick at 0x123fc6690>],
-     [Text(1998, 0, '1998'),
-      Text(2000, 0, '2000'),
-      Text(2002, 0, '2002'),
-      Text(2004, 0, '2004'),
-      Text(2006, 0, '2006'),
-      Text(2008, 0, '2008'),
-      Text(2010, 0, '2010'),
-      Text(2012, 0, '2012'),
-      Text(2014, 0, '2014'),
-      Text(2016, 0, '2016'),
-      Text(2018, 0, '2018')])
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-30-output-2.png)
-
-Comparing total population
-
-    Text(0, 0.5, 'Country')
-
-![](Homework_3_Data%20Wrangling_files/figure-commonmark/cell-31-output-2.png)
-
-Going to compare aging of population for last bench mark. Need to add to
-my original subset frames.
-
-Now need to melt data(make it longer so I do scatterplots)
-
-``` python
-america12_melt = america12.melt(id_vars=['gender', 'year', 'birth_rate', 'death_rate', 'life_expectancy', 'homicide_rate','gdp_per_capita', 'income_per_capita'], var_name='population', value_name='population_by_age')
-```
-
-    Text(0, 0.5, 'Population by Age')
+    Swimmer's ear: 33.91% 
+    Chest pain: 30.45% 
+    Vasovagal syncope: 28.68% 
+    Popliteal artery aneurysm: 24.68% 
+    Posterior cortical atrophy: 21.9% 
